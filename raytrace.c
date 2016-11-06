@@ -38,6 +38,11 @@ typedef struct {	//Create structure to be used for our object_array
   };
 } Object;
 
+typedef struct{
+	int best_index;
+	double best_t;
+} Tuple;
+
 int line = 1;
 
 // next_c() wraps the getc() function and provides error checking and line
@@ -659,6 +664,36 @@ double* reflect(double* L, double* N){	//Reflect vector L across a normal N
 	return reflect_vector;
 }
 
+Tuple* shoot(Object** object_array, int object_counter, double* Ro, double* Rd){
+	Tuple* intersection = malloc(sizeof(Tuple));
+	int parse_count = 1;
+	double best_t = INFINITY;
+	int best_index = -1;
+	double t = 0;
+	
+	while(parse_count < object_counter + 1){	//Iterate through object array and test for intersections
+		if(object_array[parse_count]->kind == 1){	//If sphere, test for sphere intersections
+			t = sphere_intersection(Ro, Rd, object_array[parse_count]->sphere.position,
+									object_array[parse_count]->sphere.radius);
+		}else if(object_array[parse_count]->kind == 2){	//If plane, test for a plane intersection
+			t = plane_intersection(Ro, Rd, object_array[parse_count]->plane.position,
+									object_array[parse_count]->plane.normal);
+		}else{
+			parse_count++;
+			continue;
+		}
+		
+		if(t < best_t && t > 0){	//Store object index with the closest intersection
+			best_t = t;
+			best_index = parse_count;
+		}
+		parse_count++;
+	}
+	intersection->best_index = best_index;
+	intersection->best_t = best_t;
+	return intersection;
+}
+
 double* render_light(Object** object_array, int object_counter, double best_t,
 					int best_index, double* Ro, double* Rd){	//Calculate color values using lights
 	double t = 0;
@@ -822,9 +857,7 @@ void raycast_scene(Object** object_array, int object_counter, double** pixel_buf
 	double h;
 	double pixwidth;
 	double pixheight;
-	double t;
-	double best_t = INFINITY;
-	int best_index;
+	Tuple* intersection;
 	
 	if(object_array[parse_count]->kind != 0){	//If camera is not present, throw an error
 		fprintf(stderr, "Error: You must have one object of type camera\n");
@@ -849,29 +882,12 @@ void raycast_scene(Object** object_array, int object_counter, double** pixel_buf
 			Rd[1] = cy - (h/2) + pixheight * (y + .5);
 			Rd[2] = 1;
 			normalize(Rd);
-			while(parse_count < object_counter + 1){	//Iterate through object array and test for intersections
-				if(object_array[parse_count]->kind == 1){	//If sphere, test for sphere intersections
-					t = sphere_intersection(Ro, Rd, object_array[parse_count]->sphere.position,
-											object_array[parse_count]->sphere.radius);
-				}else if(object_array[parse_count]->kind == 2){	//If plane, test for a plane intersection
-					t = plane_intersection(Ro, Rd, object_array[parse_count]->plane.position,
-											object_array[parse_count]->plane.normal);
-				}else{
-					parse_count++;
-					continue;
-				}
-				
-				if(t < best_t && t > 0){	//Store object index with the closest intersection
-					best_t = t;
-					best_index = parse_count;
-				}
-				parse_count++;
-			}
+			intersection = shoot(object_array, object_counter, Ro, Rd);
 
 			
-			if(best_t > 0 && best_t != INFINITY){	//If our closest intersection is valid...
+			if(intersection->best_t > 0 && intersection->best_t != INFINITY){	//If our closest intersection is valid...
 				//render light, and store the outputted colors into our pixel array
-				color = render_light(object_array, object_counter, best_t, best_index, Ro, Rd);
+				color = render_light(object_array, object_counter, intersection->best_t, intersection->best_index, Ro, Rd);
 				pixel_buffer[(int)((N*M) - (floor(pixel_count/N) + 1)*N)+ pixel_count%N][0] = color[0];
 				pixel_buffer[(int)((N*M) - (floor(pixel_count/N) + 1)*N)+ pixel_count%N][1] = color[1];
 				pixel_buffer[(int)((N*M) - (floor(pixel_count/N) + 1)*N)+ pixel_count%N][2] = color[2];
@@ -882,7 +898,7 @@ void raycast_scene(Object** object_array, int object_counter, double** pixel_buf
 				parse_count = 1;
 			}
 			pixel_count++;
-			best_t = INFINITY;
+			intersection->best_t = INFINITY;
 		}
 	}
 }
