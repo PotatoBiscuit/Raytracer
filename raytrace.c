@@ -17,12 +17,18 @@ typedef struct {	//Create structure to be used for our object_array
       double diffuse_color[3];
 	  double specular_color[3];
 	  double position[3];
+	  double reflectivity;
+	  double refractivity;
+	  double ior;
       double radius;
     } sphere;
     struct {
       double diffuse_color[3];
 	  double specular_color[3];
 	  double position[3];
+	  double reflectivity;
+	  double refractivity;
+	  double ior;
 	  double normal[3];
     } plane;
 	struct {
@@ -165,6 +171,7 @@ double clamp(double input){		//Return 1 if the input is above one, and return 0 
 void store_value(Object* input_object, int type_of_field, double input_value, double* input_vector){
 	//type_of_field values: 0 = width, 1 = height, 2 = radius, 3 = diffuse_color, 4 = specular_color, 5 = position, 6 = normal
 	//7 = radial_a0, 8 = radial_a1, 9 = radial_a2, 10 = angular_a0, 11 = color, 12 = direction, 13 = theta
+	//14 = reflectivity, 15 = refractivity, 16 = ior
 	//if input_value or input_vector aren't used, a 0 or NULL value should be passed in
 	if(input_object->kind == 0){	//If the object is a camera, store the input into its width or height fields
 		if(type_of_field == 0){
@@ -214,6 +221,12 @@ void store_value(Object* input_object, int type_of_field, double input_value, do
 			input_object->sphere.position[0] = input_vector[0];
 			input_object->sphere.position[1] = input_vector[1];
 			input_object->sphere.position[2] = input_vector[2];
+		}else if(type_of_field == 14){
+			input_object->sphere.reflectivity = input_value;
+		}else if(type_of_field == 15){
+			input_object->sphere.refractivity = input_value;
+		}else if(type_of_field == 16){
+			input_object->sphere.ior = input_value;
 		}else{
 			fprintf(stderr, "Error: Spheres only have 'radius', 'specular_color', 'diffuse_color', or 'position' fields, line:%d\n", line);
 			exit(1);
@@ -258,6 +271,12 @@ void store_value(Object* input_object, int type_of_field, double input_value, do
 				input_object->plane.normal[2] = input_vector[2];
 			}
 			normalize(input_object->plane.normal);
+		}else if(type_of_field == 14){
+			input_object->plane.reflectivity = input_value;
+		}else if(type_of_field == 15){
+			input_object->plane.refractivity = input_value;
+		}else if(type_of_field == 16){
+			input_object->plane.ior = input_value;
 		}else{
 			fprintf(stderr, "Error: Planes only have 'radius', 'specular_color', 'diffuse_color', or 'normal' fields, line:%d\n", line);
 			exit(1);
@@ -483,6 +502,15 @@ int read_scene(char* filename, Object** object_array) {	//Parses json file, and 
 			  double value = next_number(json);
 			  store_value(object_array[object_counter], 13, degrees_to_radians(value), NULL);
 			  theta = 0;
+		  }else if(strcmp(key, "reflectivity") == 0){
+			  double value = next_number(json);
+			  store_value(object_array[object_counter], 14, value, NULL);
+		  }else if(strcmp(key, "refractivity") == 0){
+			  double value = next_number(json);
+			  store_value(object_array[object_counter], 15, value, NULL);
+		  }else if(strcmp(key, "ior") == 0){
+			  double value = next_number(json);
+			  store_value(object_array[object_counter], 16, value, NULL);
 		  }else{	//If there was an invalid field, throw an error
 				fprintf(stderr, "Error: Unknown property, \"%s\", on line %d.\n",
 				key, line);
