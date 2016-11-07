@@ -693,6 +693,10 @@ double* reflect(double* L, double* N){	//Reflect vector L across a normal N
 	return reflect_vector;
 }
 
+double simplify(double input){
+	return round(input*1000)/1000;
+}
+
 Tuple* shoot(Object** object_array, int object_counter, double* Ro, double* Rd){
 	Tuple* intersection = malloc(sizeof(Tuple));
 	int parse_count = 1;
@@ -712,7 +716,7 @@ Tuple* shoot(Object** object_array, int object_counter, double* Ro, double* Rd){
 			continue;
 		}
 		
-		if(t < best_t && t > 0){	//Store object index with the closest intersection
+		if(t < best_t && t > .0001){	//Store object index with the closest intersection
 			best_t = t;
 			best_index = parse_count;
 		}
@@ -786,9 +790,9 @@ double* render_light(Object** object_array, int object_counter, double best_t,
 			reflected_color[1] = reflected_color[1]*object_array[best_index]->plane.reflectivity;
 			reflected_color[2] = reflected_color[2]*object_array[best_index]->plane.reflectivity;
 		}
-		color[0] += reflected_color[0];
-		color[1] += reflected_color[1];
-		color[2] += reflected_color[2];
+		color[0] = reflected_color[0];
+		color[1] = reflected_color[1];
+		color[2] = reflected_color[2];
 		free(reflected_color);
 	}
 	free(intersection);
