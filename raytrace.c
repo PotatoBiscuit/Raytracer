@@ -157,6 +157,7 @@ static inline double sqr(double v) {	//Return the square of the number passed in
 
 static inline void normalize(double* v) {	//Normalize any vectors passed into this function
 	double len = sqrt(sqr(v[0]) + sqr(v[1]) + sqr(v[2]));
+	if(len == 0) return;
 	v[0] /= len;
 	v[1] /= len;
 	v[2] /= len;
@@ -693,6 +694,34 @@ double* reflect(double* L, double* N){	//Reflect vector L across a normal N
 	return reflect_vector;
 }
 
+double* refract(double* Rd, double* N, double ior){
+	//Use Snell's Law to find refracted ray
+	double* refract_vector = malloc(sizeof(double)*3);
+	double refract_sin;
+	double refract_cos;
+	double a1[3];
+	double a[3];
+	double b[3];
+	if(ior <= 0){
+		ior = 1;
+	}
+	a1[0] = N[1]*Rd[2] - N[2]*Rd[1];
+	a1[1] = N[0]*Rd[2] - N[2]*Rd[0];
+	a1[2] = N[0]*Rd[1] - N[1]*Rd[0];
+	a[0] = a1[0]/calculate_distance(a1);
+	a[1] = a1[1]/calculate_distance(a1);
+	a[2] = a1[2]/calculate_distance(a1);
+	b[0] = a[1]*N[2] - a[2]*N[1];
+	b[1] = a[0]*N[2] - a[2]*N[0];
+	b[2] = a[0]*N[1] - a[1]*N[0];
+	refract_sin = (Rd[0]*b[0] + Rd[1]*b[1] + Rd[2]*b[2])/ior;
+	refract_cos = sqrt(1 - sqr(refract_sin));
+	refract_vector[0] = -N[0]*refract_cos + b[0]*refract_sin;
+	refract_vector[1] = -N[1]*refract_cos + b[1]*refract_sin;
+	refract_vector[2] = -N[2]*refract_cos + b[2]*refract_sin;
+	return refract_vector;
+}
+
 double simplify(double input){
 	return round(input*1000)/1000;
 }
@@ -716,7 +745,7 @@ Tuple* shoot(Object** object_array, int object_counter, double* Ro, double* Rd){
 			continue;
 		}
 		
-		if(t < best_t && t > .0001){	//Store object index with the closest intersection
+		if(t < best_t && t > .001){	//Store object index with the closest intersection
 			best_t = t;
 			best_index = parse_count;
 		}
@@ -727,8 +756,111 @@ Tuple* shoot(Object** object_array, int object_counter, double* Ro, double* Rd){
 	return intersection;
 }
 
+//Forward declaration of render_light for the functions get_reflect_color() and get_refract_color()
+double* render_light(Object**, int, double, int, double*, double*, int);
+
+double* get_reflect_color(Object** object_array, int object_counter, int best_index,
+							double* Ron, double* Rd, double* N, int layer){
+	double* reflected_color;
+	double* R1;
+	Tuple* intersection;
+	R1 = reflect(Rd, N);
+	normalize(R1);
+	
+	intersection = shoot(object_array, object_counter, Ron, R1);
+	if(intersection->best_t > 0 && intersection->best_t != INFINITY){
+		reflected_color = render_light(object_array, object_counter, intersection->best_t,
+										intersection->best_index, Ron, R1, layer + 1);
+		if(object_array[best_index]->kind == 1){
+			reflected_color[0] = reflected_color[0]*object_array[best_index]->sphere.reflectivity;
+			reflected_color[1] = reflected_color[1]*object_array[best_index]->sphere.reflectivity;
+			reflected_color[2] = reflected_color[2]*object_array[best_index]->sphere.reflectivity;
+		}
+		else if(object_array[best_index]->kind == 2){
+			reflected_color[0] = reflected_color[0]*object_array[best_index]->plane.reflectivity;
+			reflected_color[1] = reflected_color[1]*object_array[best_index]->plane.reflectivity;
+			reflected_color[2] = reflected_color[2]*object_array[best_index]->plane.reflectivity;
+		}
+	}else{
+		reflected_color = malloc(sizeof(double)*3);
+		reflected_color[0] = 0;
+		reflected_color[1] = 0;
+		reflected_color[2] = 0;
+	}
+	free(intersection);
+	free(R1);
+	return reflected_color;
+}
+
+double* get_refract_color(Object** object_array, int object_counter, int best_index,
+							double* Ron, double* Rd, double* N, int layer){
+	double Ron1[3];
+	double N1[3];
+	double* refracted_vector;
+	double* refracted_vector1;
+	double* refracted_color = NULL;
+	Tuple* intersection;
+	int t = 0;
+	if(object_array[best_index]->kind == 1){
+		refracted_vector1 = refract(Rd, N, object_array[best_index]->sphere.ior);
+		normalize(refracted_vector1);
+		t = sphere_intersection(Ron, refracted_vector1, object_array[best_index]->sphere.position, object_array[best_index]->sphere.radius);
+		if(t <= 0 || t == INFINITY){
+			refracted_vector = refracted_vector1;
+		}else{
+			Ron1[0] = Ron[0] + refracted_vector1[0]*t;
+			Ron1[1] = Ron[1] + refracted_vector1[1]*t;
+			Ron1[2] = Ron[2] + refracted_vector1[2]*t;
+			N1[0] = object_array[best_index]->sphere.position[0] - Ron1[0];
+			N1[1] = object_array[best_index]->sphere.position[1] - Ron1[1];
+			N1[2] = object_array[best_index]->sphere.position[2] - Ron1[2];
+			normalize(N1);
+			refracted_vector = refract(refracted_vector1, N1, object_array[best_index]->sphere.ior);
+			free(refracted_vector1);
+		}
+		normalize(refracted_vector);
+			
+		intersection = shoot(object_array, object_counter, Ron1, refracted_vector);
+		if(intersection->best_t > 0 && intersection->best_t != INFINITY){
+			refracted_color = render_light(object_array, object_counter, intersection->best_t,
+											intersection->best_index, Ron1, refracted_vector, layer+1);
+			refracted_color[0] = refracted_color[0]*object_array[best_index]->sphere.refractivity;
+			refracted_color[1] = refracted_color[1]*object_array[best_index]->sphere.refractivity;
+			refracted_color[2] = refracted_color[2]*object_array[best_index]->sphere.refractivity;
+		}
+		free(intersection);
+		free(refracted_vector);
+	}
+	else if(object_array[best_index]->kind == 2){
+		refracted_vector = refract(Rd, N, object_array[best_index]->plane.ior);
+		normalize(refracted_vector);
+		
+		intersection = shoot(object_array, object_counter, Ron, refracted_vector);
+		if(intersection->best_t > 0 && intersection->best_t != INFINITY){
+			refracted_color = render_light(object_array, object_counter, intersection->best_t,
+											intersection->best_index, Ron, refracted_vector, layer+1);
+			refracted_color[0] = refracted_color[0]*object_array[best_index]->plane.refractivity;
+			refracted_color[1] = refracted_color[1]*object_array[best_index]->plane.refractivity;
+			refracted_color[2] = refracted_color[2]*object_array[best_index]->plane.refractivity;
+		}
+		free(intersection);
+		free(refracted_vector);
+	}
+	
+	
+	if(refracted_color == NULL){
+		refracted_color = malloc(sizeof(double)*3);
+		refracted_color[0] = 0;
+		refracted_color[1] = 0;
+		refracted_color[2] = 0;
+	}
+	
+	return refracted_color;
+}
+
+//Calculate color values using lights
 double* render_light(Object** object_array, int object_counter, double best_t,
-					int best_index, double* Ro, double* Rd, int layer){	//Calculate color values using lights
+						int best_index, double* Ro, double* Rd, int layer){
 	double t = 0;
 	int parse_count = 1;
 	int parse_count1 = 1;
@@ -736,12 +868,12 @@ double* render_light(Object** object_array, int object_counter, double best_t,
 	double Rdn[3];
 	double* color = malloc(sizeof(double)*3);
 	double* reflected_color;
+	double* refracted_color;
 	double* diffused_color;
 	double* speculared_color;
 	double N[3];
 	double L[3];
 	double* R;
-	double* R1;
 	double V[3];
 	double distance_from_light;
 	Tuple* intersection;
@@ -772,32 +904,16 @@ double* render_light(Object** object_array, int object_counter, double best_t,
 		N[1] = object_array[best_index]->plane.normal[1];
 		N[2] = object_array[best_index]->plane.normal[2];
 	}
+	normalize(N);
 	
-	R1 = reflect(Rd, N);
-	normalize(R1);
+	reflected_color = get_reflect_color(object_array, object_counter, best_index, Ron, Rd, N, layer);
+	refracted_color = get_refract_color(object_array, object_counter, best_index, Ron, Rd, N, layer);
+	color[0] += reflected_color[0] + refracted_color[0];
+	color[1] += reflected_color[1] + refracted_color[1];
+	color[2] += reflected_color[2] + refracted_color[2];
 	
-	intersection = shoot(object_array, object_counter, Ron, R1);
-	if(intersection->best_t > 0 && intersection->best_t != INFINITY){
-		reflected_color = render_light(object_array, object_counter,
-		intersection->best_t, intersection->best_index, Ron, R1, layer + 1);
-		if(object_array[best_index]->kind == 1){
-			reflected_color[0] = reflected_color[0]*object_array[best_index]->sphere.reflectivity;
-			reflected_color[1] = reflected_color[1]*object_array[best_index]->sphere.reflectivity;
-			reflected_color[2] = reflected_color[2]*object_array[best_index]->sphere.reflectivity;
-		}
-		else if(object_array[best_index]->kind == 2){
-			reflected_color[0] = reflected_color[0]*object_array[best_index]->plane.reflectivity;
-			reflected_color[1] = reflected_color[1]*object_array[best_index]->plane.reflectivity;
-			reflected_color[2] = reflected_color[2]*object_array[best_index]->plane.reflectivity;
-		}
-		color[0] = reflected_color[0];
-		color[1] = reflected_color[1];
-		color[2] = reflected_color[2];
-		free(reflected_color);
-	}
-	free(intersection);
-	free(R1);
-	
+	free(reflected_color);
+	free(refracted_color);
 	
 	while(parse_count < object_counter + 1){	//Iterate through object array and check for lights
 		if(object_array[parse_count]->kind == 3){
@@ -832,6 +948,7 @@ double* render_light(Object** object_array, int object_counter, double best_t,
 					t = 0;
 				}
 			}
+			
 			L[0] = Rdn[0];	//Store object to light vector into L
 			L[1] = Rdn[1];
 			L[2] = Rdn[2];
