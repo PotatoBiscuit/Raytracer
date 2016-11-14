@@ -620,6 +620,36 @@ double sphere_intersection(double* Ro, double* Rd, double* C, double radius){ //
 	
 }
 
+double special_sphere_intersection(double* Ro, double* Rd, double* C, double radius){ //Calculates the solutions to a sphere intersection
+	//Sphere equation is x^2 + y^2 + z^2 = r^2
+	//Parameterize: (x-Cx)^2 + (y-Cy)^2 + (z-Cz)^2 - r^2 = 0
+	//Substitute with ray:
+	//(Rox + t*Rdx - Cx)^2 + (Roy + t*Rdy - Cy)^2 + (Roz + t*Rdz - Cz)^2 - r^2 = 0
+	//Solve for t:
+	//a = Rdx^2 + Rdy^2 + Rdz^2
+	double a = sqr(Rd[0]) + sqr(Rd[1]) + sqr(Rd[2]);
+	//b = (2RdxRox - 2RdxCx) + (2RdyRoy - 2RdyCy) + (2RdzRoz - 2RdzCz)
+	double b = (2*Rd[0]*Ro[0] - 2*Rd[0]*C[0]) + (2*Rd[1]*Ro[1] - 2*Rd[1]*C[1]) + (2*Rd[2]*Ro[2] - 2*Rd[2]*C[2]);
+	//c = (Rox^2 - 2RoxCx + Cx^2) + (Roy^2 - 2RoyCy + Cy^2) + (Roz^2 - 2RozCz + Cz^2) - r^2
+	double c = (sqr(Ro[0]) - 2*Ro[0]*C[0] + sqr(C[0])) + (sqr(Ro[1]) - 2*Ro[1]*C[1] + sqr(C[1])) + (sqr(Ro[2]) - 2*Ro[2]*C[2] + sqr(C[2])) - sqr(radius);
+	
+	double t0;
+	double t1;
+	double det = sqr(b) - 4*a*c;
+	if(det < 0) return 0;	//If there are no real solutions return 0
+	
+	t0 = (-b - sqrt(det))/(2*a);	//Calculate both solutions
+	t1 = (-b + sqrt(det))/(2*a);
+	if(t0 <= 0 && t1 <= 0) return 0; //If both solutions are less than 0, return 0
+	if(t0 <= 0 && t1 > 0) return t1; //If only t1 is greater than 0, return t1
+	if(t1 <= 0 && t0 > 0) return t0; //If only t0 is greater than 0, return t0
+	if(t0 > t1) return t0;	//If t0 is greater than t1, return t1
+	if(t1 > t0) return t1;	//If t1 is greater than t0, return t0
+	
+	return t0;	//If both solutions are equal, just return t0
+	
+}
+
 double plane_intersection(double* Ro, double* Rd, double* C, double* N){ //Calculates the solution of a plane intersection
 	//Solve for Plane Equation:
 	//Nx(x - Cx) + Ny(y - Cy) + Nz(z - Cz) = 0
@@ -699,26 +729,30 @@ double* refract(double* Rd, double* N, double ior){
 	double* refract_vector = malloc(sizeof(double)*3);
 	double refract_sin;
 	double refract_cos;
+	double cross_product_distance;
 	double a1[3];
 	double a[3];
 	double b[3];
-	if(ior <= 0){
+	if(ior < 1){
 		ior = 1;
 	}
 	a1[0] = N[1]*Rd[2] - N[2]*Rd[1];
-	a1[1] = N[0]*Rd[2] - N[2]*Rd[0];
+	a1[1] = -(N[0]*Rd[2] - N[2]*Rd[0]);
 	a1[2] = N[0]*Rd[1] - N[1]*Rd[0];
-	a[0] = a1[0]/calculate_distance(a1);
-	a[1] = a1[1]/calculate_distance(a1);
-	a[2] = a1[2]/calculate_distance(a1);
+	cross_product_distance = calculate_distance(a1);
+	a[0] = a1[0]/cross_product_distance;
+	a[1] = a1[1]/cross_product_distance;
+	a[2] = a1[2]/cross_product_distance;
 	b[0] = a[1]*N[2] - a[2]*N[1];
-	b[1] = a[0]*N[2] - a[2]*N[0];
+	b[1] = -(a[0]*N[2] - a[2]*N[0]);
 	b[2] = a[0]*N[1] - a[1]*N[0];
 	refract_sin = (Rd[0]*b[0] + Rd[1]*b[1] + Rd[2]*b[2])/ior;
 	refract_cos = sqrt(1 - sqr(refract_sin));
 	refract_vector[0] = -N[0]*refract_cos + b[0]*refract_sin;
 	refract_vector[1] = -N[1]*refract_cos + b[1]*refract_sin;
 	refract_vector[2] = -N[2]*refract_cos + b[2]*refract_sin;
+	normalize(refract_vector);
+	
 	return refract_vector;
 }
 
@@ -745,7 +779,7 @@ Tuple* shoot(Object** object_array, int object_counter, double* Ro, double* Rd){
 			continue;
 		}
 		
-		if(t < best_t && t > .001){	//Store object index with the closest intersection
+		if(t < best_t && t > .0001){	//Store object index with the closest intersection
 			best_t = t;
 			best_index = parse_count;
 		}
@@ -800,26 +834,24 @@ double* get_refract_color(Object** object_array, int object_counter, int best_in
 	double* refracted_vector1;
 	double* refracted_color = NULL;
 	Tuple* intersection;
-	int t = 0;
+	double t = 0;
 	if(object_array[best_index]->kind == 1){
 		refracted_vector1 = refract(Rd, N, object_array[best_index]->sphere.ior);
-		normalize(refracted_vector1);
-		t = sphere_intersection(Ron, refracted_vector1, object_array[best_index]->sphere.position, object_array[best_index]->sphere.radius);
-		if(t <= 0 || t == INFINITY){
+		t = special_sphere_intersection(Ron, refracted_vector1, object_array[best_index]->sphere.position, object_array[best_index]->sphere.radius);
+		if(t <= .0001 || t == INFINITY){
 			refracted_vector = refracted_vector1;
 		}else{
 			Ron1[0] = Ron[0] + refracted_vector1[0]*t;
 			Ron1[1] = Ron[1] + refracted_vector1[1]*t;
 			Ron1[2] = Ron[2] + refracted_vector1[2]*t;
-			N1[0] = object_array[best_index]->sphere.position[0] - Ron1[0];
-			N1[1] = object_array[best_index]->sphere.position[1] - Ron1[1];
-			N1[2] = object_array[best_index]->sphere.position[2] - Ron1[2];
+			N1[0] = (object_array[best_index]->sphere.position[0] - Ron1[0]);
+			N1[1] = (object_array[best_index]->sphere.position[1] - Ron1[1]);
+			N1[2] = (object_array[best_index]->sphere.position[2] - Ron1[2]);
 			normalize(N1);
 			refracted_vector = refract(refracted_vector1, N1, object_array[best_index]->sphere.ior);
 			free(refracted_vector1);
 		}
-		normalize(refracted_vector);
-			
+		
 		intersection = shoot(object_array, object_counter, Ron1, refracted_vector);
 		if(intersection->best_t > 0 && intersection->best_t != INFINITY){
 			refracted_color = render_light(object_array, object_counter, intersection->best_t,
@@ -833,7 +865,6 @@ double* get_refract_color(Object** object_array, int object_counter, int best_in
 	}
 	else if(object_array[best_index]->kind == 2){
 		refracted_vector = refract(Rd, N, object_array[best_index]->plane.ior);
-		normalize(refracted_vector);
 		
 		intersection = shoot(object_array, object_counter, Ron, refracted_vector);
 		if(intersection->best_t > 0 && intersection->best_t != INFINITY){
@@ -877,6 +908,7 @@ double* render_light(Object** object_array, int object_counter, double best_t,
 	double V[3];
 	double distance_from_light;
 	Tuple* intersection;
+	double portion_not_refracted_reflected = 0;
 	
 	
 	Ron[0] = best_t * Rd[0] + Ro[0];	//Calculate the intersection point of the object we hit
@@ -898,11 +930,15 @@ double* render_light(Object** object_array, int object_counter, double best_t,
 		N[0] = Ron[0] - object_array[best_index]->sphere.position[0];
 		N[1] = Ron[1] - object_array[best_index]->sphere.position[1];
 		N[2] = Ron[2] - object_array[best_index]->sphere.position[2];
+		portion_not_refracted_reflected = 1 - object_array[best_index]->sphere.reflectivity -
+											object_array[best_index]->sphere.refractivity;
 	}
 	else if(object_array[best_index]->kind == 2){
 		N[0] = object_array[best_index]->plane.normal[0];
 		N[1] = object_array[best_index]->plane.normal[1];
 		N[2] = object_array[best_index]->plane.normal[2];
+		portion_not_refracted_reflected = 1 - object_array[best_index]->plane.reflectivity -
+											object_array[best_index]->plane.refractivity;
 	}
 	normalize(N);
 	
@@ -985,26 +1021,32 @@ double* render_light(Object** object_array, int object_counter, double best_t,
 					exit(1);
 				}
 				
+				
 				//Reverse direction of Rdn to be used in angular attenuation calculations
 				Rdn[0] = -Rdn[0];
 				Rdn[1] = -Rdn[1];
 				Rdn[2] = -Rdn[2];
 				//Add total light values together
-				color[0] += 	frad(object_array[parse_count]->light.radial_a0,
+				color[0] += 	portion_not_refracted_reflected *
+								frad(object_array[parse_count]->light.radial_a0,
 								object_array[parse_count]->light.radial_a1,
 								object_array[parse_count]->light.radial_a2, best_t) *
 								fang(object_array[parse_count]->light.angular_a0,
 								object_array[parse_count]->light.theta, Rdn,
 								object_array[parse_count]->light.direction) *
 								(diffused_color[0] + speculared_color[0]);
-				color[1] += 	frad(object_array[parse_count]->light.radial_a0,
+								
+				color[1] += 	portion_not_refracted_reflected *
+								frad(object_array[parse_count]->light.radial_a0,
 								object_array[parse_count]->light.radial_a1,
 								object_array[parse_count]->light.radial_a2, best_t) *
 								fang(object_array[parse_count]->light.angular_a0,
 								object_array[parse_count]->light.theta, Rdn,
 								object_array[parse_count]->light.direction) *
 								(diffused_color[1] + speculared_color[1]);
-				color[2] += 	frad(object_array[parse_count]->light.radial_a0,
+								
+				color[2] += 	portion_not_refracted_reflected *
+								frad(object_array[parse_count]->light.radial_a0,
 								object_array[parse_count]->light.radial_a1,
 								object_array[parse_count]->light.radial_a2, best_t) *
 								fang(object_array[parse_count]->light.angular_a0,
