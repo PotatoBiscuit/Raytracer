@@ -1,10 +1,12 @@
-# Raycaster with Lighting
-This is a raycaster that handles plane and sphere primitives, as well as spotlights and point lights
+# Raytracer
+This is a raytracer that handles plane and sphere primitives, as well as spotlights and point lights
+
+Reflections and Refractions are also supported
 
 
 Compile Instructions (ignore any warnings):
 
-gcc raycast.c -o raycast --std=c99 -lm
+gcc raytrace.c -o raytrace -std=c99 -lm
 
 or use the Makefile
 
@@ -13,4 +15,4 @@ or use the Makefile
 
 Usage goes as follows:
 
-raycast width height input.json output.ppm
+raytrace width height input.json output.ppm

@@ -1,2 +1,2 @@
 all:
-	gcc raycast.c -o raycast --std=c99 -lm
+	gcc raytrace.c -o raytrace -std=c99 -lm
