@@ -224,10 +224,19 @@ void store_value(Object* input_object, int type_of_field, double input_value, do
 			input_object->sphere.position[1] = input_vector[1];
 			input_object->sphere.position[2] = input_vector[2];
 		}else if(type_of_field == 14){
+			if(input_value + input_object->sphere.refractivity > 1 || input_value < 0){
+				fprintf(stderr, "Reflectivity and refractivity fields must add up to less than 1, and be greater or equal to 0, Line:%d\n", line);
+				exit(1);
+			}
 			input_object->sphere.reflectivity = input_value;
 		}else if(type_of_field == 15){
+			if(input_value + input_object->sphere.reflectivity > 1 || input_value < 0){
+				fprintf(stderr, "Reflectivity and refractivity fields must add up to less than 1, and be greater or equal to 0, Line:%d\n", line);
+				exit(1);
+			}
 			input_object->sphere.refractivity = input_value;
 		}else if(type_of_field == 16){
+			if(input_value < 1) input_value = 1;
 			input_object->sphere.ior = input_value;
 		}else{
 			fprintf(stderr, "Error: Spheres only have 'radius', 'specular_color', 'diffuse_color', or 'position' fields, line:%d\n", line);
@@ -274,10 +283,19 @@ void store_value(Object* input_object, int type_of_field, double input_value, do
 			}
 			normalize(input_object->plane.normal);
 		}else if(type_of_field == 14){
+			if(input_value + input_object->plane.refractivity > 1 || input_value < 0){
+				fprintf(stderr, "Reflectivity and refractivity fields must add up to less than 1, and be greater or equal to 0, Line:%d\n", line);
+				exit(1);
+			}
 			input_object->plane.reflectivity = input_value;
 		}else if(type_of_field == 15){
+			if(input_value + input_object->plane.reflectivity > 1 || input_value < 0){
+				fprintf(stderr, "Reflectivity and refractivity fields must add up to less than 1, and be greater or equal to 0, Line:%d\n", line);
+				exit(1);
+			}
 			input_object->plane.refractivity = input_value;
 		}else if(type_of_field == 16){
+			if(input_value < 1) input_value = 1;
 			input_object->plane.ior = input_value;
 		}else{
 			fprintf(stderr, "Error: Planes only have 'radius', 'specular_color', 'diffuse_color', or 'normal' fields, line:%d\n", line);
@@ -308,8 +326,8 @@ void store_value(Object* input_object, int type_of_field, double input_value, do
 		}else if(type_of_field == 13){
 			input_object->light.theta = input_value;
 		}else{
-			fprintf(stderr, "Error: Lights must have the fields listed, line:%d\n", line);
-			fprintf(stderr, "Color\nPosition\nDirection\nradial-n0\nradial-n1\nradial-n2\nangular-n0\n");
+			fprintf(stderr, "Error: Lights may only have the fields listed, line:%d\n", line);
+			fprintf(stderr, "Color\nPosition\nDirection\nradial-n0\nradial-n1\nradial-n2\nangular-n0\ntheta\n");
 			exit(1);
 		}
 	}else{
@@ -327,7 +345,7 @@ int read_scene(char* filename, Object** object_array) {	//Parses json file, and 
   int num_objects = 0;
   int object_counter = -1;
   int height = 0, width = 0, radius = 0, diffuse_color = 0, specular_color = 0, position = 0, normal = 0;	//These will serve as boolean operators
-  int radial_a2 = 0, radial_a1 = 0, radial_a0 = 0, angular_a0 = 0, color = 0, theta = 0;
+  int radial_a2 = 0, radial_a1 = 0, radial_a0 = 0, angular_a0 = 0, color = 0, theta = 0, ior = 0;
   FILE* json = fopen(filename, "r");	//Open our json file
 
   if (json == NULL) {	//If the file does not exist, throw an error
@@ -388,12 +406,14 @@ int read_scene(char* filename, Object** object_array) {	//Parses json file, and 
 		  radius = 1;
 		  specular_color = 1;
 		  diffuse_color = 1;
+		  ior = 1;
       } else if (strcmp(value, "plane") == 0) {
 		  object_array[object_counter]->kind = 2;	//If plane, set object kind to 2
 		  position = 1;
 		  normal = 1;
 		  specular_color = 1;
 		  diffuse_color = 1;
+		  ior = 1;
       } else if (strcmp(value, "light") == 0){		//If light, set object kind to 3
 		  object_array[object_counter]->kind = 3;
 		  position = 1;
@@ -440,6 +460,10 @@ int read_scene(char* filename, Object** object_array) {	//Parses json file, and 
 		  if(theta == 1){	//If theta did not exist in json file, store default value 0
 			  store_value(object_array[object_counter], 13, 0, NULL);
 			  theta = 0;
+		  }
+		  if(ior == 1){
+			  store_value(object_array[object_counter], 16, 1, NULL);
+			  ior = 0;
 		  }
 		  break;
 		} else if (c == ',') {
@@ -513,6 +537,7 @@ int read_scene(char* filename, Object** object_array) {	//Parses json file, and 
 		  }else if(strcmp(key, "ior") == 0){
 			  double value = next_number(json);
 			  store_value(object_array[object_counter], 16, value, NULL);
+			  ior = 0;
 		  }else{	//If there was an invalid field, throw an error
 				fprintf(stderr, "Error: Unknown property, \"%s\", on line %d.\n",
 				key, line);
@@ -739,9 +764,6 @@ double* refract(double* Rd, double* N, double ior){  //Use Snell's Law to find r
 	double a1[3];
 	double a[3];
 	double b[3];
-	if(ior < 1){	//It is impossible for index of refraction to be below one
-		ior = 1;	//If it is, make index of refraction 1
-	}
 	a1[0] = N[1]*Rd[2] - N[2]*Rd[1];
 	a1[1] = -(N[0]*Rd[2] - N[2]*Rd[0]);
 	a1[2] = N[0]*Rd[1] - N[1]*Rd[0];
