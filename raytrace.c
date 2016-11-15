@@ -1064,7 +1064,7 @@ double* render_light(Object** object_array, int object_counter, double best_t,
 				//Add total light values together
 				radial_attenuation = frad(object_array[parse_count]->light.radial_a0,
 								object_array[parse_count]->light.radial_a1,
-								object_array[parse_count]->light.radial_a2, best_t);
+								object_array[parse_count]->light.radial_a2, distance_from_light);
 				angular_attenuation = fang(object_array[parse_count]->light.angular_a0,
 								object_array[parse_count]->light.theta, Rdn,
 								object_array[parse_count]->light.direction);
